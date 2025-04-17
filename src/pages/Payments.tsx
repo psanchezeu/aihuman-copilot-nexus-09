@@ -1,293 +1,291 @@
 
-import { useState, useEffect } from "react";
-import AppLayout from "@/components/layout/AppLayout";
-import { useAuth } from "@/contexts/AuthContext";
-import { DataTable } from "@/components/ui/data-table";
-import { ColumnDef } from "@tanstack/react-table";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, CreditCard, Download, Eye, Filter, Trash2, X, Plus } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
-import { getInvoices, createInvoice, updateInvoice, deleteInvoice } from "@/lib/storageService";
-import { z } from "zod";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Invoice } from "@/lib/models";
+import { useState, useEffect } from 'react';
+import AppLayout from '@/components/layout/AppLayout';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/components/ui/use-toast';
+import { DataTable } from '@/components/ui/data-table';
+import { useAuth } from '@/contexts/AuthContext';
+import { getInvoices, createInvoice, updateInvoice, deleteInvoice, getUserById } from '@/lib/storageService';
+import { Invoice } from '@/lib/models';
+import { ColumnDef } from '@tanstack/react-table';
+import { Calendar, Download, Filter, Plus, Trash } from 'lucide-react';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { z } from 'zod';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Textarea } from '@/components/ui/textarea';
 
-// Sample invoice data for demonstration
-const sampleInvoices = [
-  {
-    id: "INV-001",
-    clientId: "client1",
-    projectId: "proj1",
-    clientName: "Empresa Tecnológica S.L.",
-    concept: "Jump CRM Básico",
-    amount: 1200,
-    issueDate: "2025-03-15",
-    status: "paid",
-    paymentMethod: "credit_card",
-    createdAt: "2025-03-15"
-  },
-  {
-    id: "INV-002",
-    clientId: "client2",
-    projectId: "proj2",
-    clientName: "Marketing Digital Avanzado",
-    concept: "Proyecto Personalizado - Fase 1",
-    amount: 3500,
-    issueDate: "2025-03-10",
-    status: "pending",
-    paymentMethod: "transfer",
-    createdAt: "2025-03-10"
-  },
-  {
-    id: "INV-003",
-    clientId: "client3",
-    projectId: "proj3",
-    clientName: "Clínica Dental Sonrisa",
-    concept: "Jump Gestión Citas",
-    amount: 900,
-    issueDate: "2025-02-28",
-    status: "paid",
-    paymentMethod: "credit_card",
-    createdAt: "2025-02-28"
-  },
-  {
-    id: "INV-004",
-    clientId: "client2",
-    projectId: "proj4",
-    clientName: "Marketing Digital Avanzado",
-    concept: "Horas adicionales - Proyecto CRM",
-    amount: 450,
-    issueDate: "2025-02-15",
-    status: "overdue",
-    paymentMethod: "pending",
-    createdAt: "2025-02-15"
-  },
-  {
-    id: "INV-005",
-    clientId: "client4",
-    projectId: "proj5",
-    clientName: "Restaurante La Delicia",
-    concept: "Jump Sistema de Reservas",
-    amount: 1500,
-    issueDate: "2025-02-01",
-    status: "paid",
-    paymentMethod: "credit_card",
-    createdAt: "2025-02-01"
-  },
-];
+// Extended Invoice type with clientName
+interface ExtendedInvoice extends Invoice {
+  clientName: string;
+}
 
-// Schema for invoice validation
+// Form schema
 const invoiceSchema = z.object({
-  clientName: z.string().min(1, "El nombre del cliente es obligatorio"),
-  concept: z.string().min(1, "El concepto es obligatorio"),
-  amount: z.coerce.number().min(1, "El importe debe ser mayor a 0"),
-  issueDate: z.string().min(1, "La fecha es obligatoria"),
-  status: z.enum(["paid", "pending", "overdue"]),
-  paymentMethod: z.enum(["credit_card", "transfer", "pending"]),
+  concept: z.string().min(1, "El concepto es requerido"),
+  amount: z.number().min(1, "El monto debe ser mayor a 0"),
+  issueDate: z.string().min(1, "La fecha es requerida"),
+  status: z.enum(["pending", "paid", "overdue"]),
+  paymentMethod: z.string().min(1, "El método de pago es requerido"),
+  clientId: z.string().min(1, "El cliente es requerido"),
+  projectId: z.string().min(1, "El proyecto es requerido"),
 });
 
 const Payments = () => {
   const { currentUser } = useAuth();
   const { toast } = useToast();
-  const [invoices, setInvoices] = useState(sampleInvoices);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [activeTab, setActiveTab] = useState("list");
-  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [invoices, setInvoices] = useState<ExtendedInvoice[]>([]);
+  const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [editingInvoice, setEditingInvoice] = useState<ExtendedInvoice | null>(null);
 
-  // Initialize the form
   const form = useForm<z.infer<typeof invoiceSchema>>({
     resolver: zodResolver(invoiceSchema),
     defaultValues: {
-      clientName: "",
       concept: "",
       amount: 0,
-      issueDate: new Date().toISOString().slice(0, 10),
+      issueDate: new Date().toISOString().split("T")[0],
       status: "pending",
-      paymentMethod: "pending",
+      paymentMethod: "credit_card",
+      clientId: "",
+      projectId: "",
     },
   });
 
-  // Update form values when selected invoice changes
   useEffect(() => {
-    if (selectedInvoice) {
+    loadInvoices();
+  }, [currentUser, filterStatus, searchTerm]);
+
+  useEffect(() => {
+    if (editingInvoice) {
       form.reset({
-        clientName: selectedInvoice.clientName,
-        concept: selectedInvoice.concept,
-        amount: selectedInvoice.amount,
-        issueDate: selectedInvoice.issueDate.slice(0, 10),
-        status: selectedInvoice.status as "paid" | "pending" | "overdue",
-        paymentMethod: selectedInvoice.paymentMethod as "credit_card" | "transfer" | "pending",
+        concept: editingInvoice.concept,
+        amount: editingInvoice.amount,
+        issueDate: new Date(editingInvoice.issueDate).toISOString().split("T")[0],
+        status: editingInvoice.status as "pending" | "paid" | "overdue",
+        paymentMethod: editingInvoice.paymentMethod,
+        clientId: editingInvoice.clientId,
+        projectId: editingInvoice.projectId,
       });
     } else {
       form.reset({
-        clientName: "",
         concept: "",
         amount: 0,
-        issueDate: new Date().toISOString().slice(0, 10),
+        issueDate: new Date().toISOString().split("T")[0],
         status: "pending",
-        paymentMethod: "pending",
+        paymentMethod: "credit_card",
+        clientId: "",
+        projectId: "",
       });
     }
-  }, [selectedInvoice, form]);
+  }, [editingInvoice, form]);
 
-  // Handle form submission
-  const onSubmit = (data: z.infer<typeof invoiceSchema>) => {
-    if (selectedInvoice) {
-      // Update existing invoice
-      const updatedInvoice = {
-        ...selectedInvoice,
-        ...data,
+  const loadInvoices = () => {
+    // Get the raw invoices from storage
+    const rawInvoices = getInvoices();
+    
+    // Map the invoices to include clientName
+    const extendedInvoices: ExtendedInvoice[] = rawInvoices.map(invoice => {
+      const client = getUserById(invoice.clientId);
+      return {
+        ...invoice,
+        clientName: client?.name || 'Cliente desconocido'
       };
-      
-      const updatedInvoices = invoices.map(inv => 
-        inv.id === selectedInvoice.id ? updatedInvoice : inv
+    });
+
+    // Apply filters
+    let filtered = [...extendedInvoices];
+    
+    if (filterStatus !== "all") {
+      filtered = filtered.filter(inv => inv.status === filterStatus);
+    }
+    
+    if (searchTerm) {
+      filtered = filtered.filter(inv => 
+        inv.concept.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        inv.clientName.toLowerCase().includes(searchTerm.toLowerCase())
       );
-      
-      setInvoices(updatedInvoices);
-      
-      toast({
-        title: "Factura actualizada",
-        description: `La factura ${selectedInvoice.id} ha sido actualizada correctamente.`
-      });
-    } else {
-      // Create new invoice
-      const newInvoice = {
-        id: `INV-${Math.floor(Math.random() * 1000).toString().padStart(3, '0')}`,
-        clientId: `client${Math.floor(Math.random() * 10)}`,
-        projectId: `proj${Math.floor(Math.random() * 10)}`,
+    }
+    
+    setInvoices(filtered);
+  };
+
+  const handleCreateInvoice = (data: z.infer<typeof invoiceSchema>) => {
+    try {
+      const newInvoice = createInvoice({
         ...data,
-        createdAt: new Date().toISOString()
+        amount: Number(data.amount),
+      });
+      
+      const client = getUserById(newInvoice.clientId);
+      const extendedInvoice: ExtendedInvoice = {
+        ...newInvoice,
+        clientName: client?.name || 'Cliente desconocido'
       };
       
-      setInvoices([newInvoice, ...invoices]);
+      setInvoices(prev => [...prev, extendedInvoice]);
       
       toast({
         title: "Factura creada",
-        description: `La factura ${newInvoice.id} ha sido creada correctamente.`
+        description: "La factura fue creada exitosamente",
+      });
+      
+      setActiveTab("list");
+      form.reset();
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Hubo un problema al crear la factura",
+        variant: "destructive",
       });
     }
-    
-    setActiveTab("list");
-    setSelectedInvoice(null);
   };
 
-  // Handle delete invoice
-  const handleDelete = (invoice: any) => {
-    const filteredInvoices = invoices.filter(inv => inv.id !== invoice.id);
-    setInvoices(filteredInvoices);
+  const handleUpdateInvoice = (data: z.infer<typeof invoiceSchema>) => {
+    if (!editingInvoice) return;
     
-    toast({
-      title: "Factura eliminada",
-      description: `La factura ${invoice.id} ha sido eliminada correctamente.`
-    });
-  };
-
-  // Filter invoices based on search query and status
-  const filteredInvoices = invoices.filter(
-    (invoice) => {
-      const matchesSearch = invoice.clientName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                           invoice.concept.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           invoice.id.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === "all" || invoice.status === statusFilter;
+    try {
+      const updatedInvoice = updateInvoice({
+        ...editingInvoice,
+        ...data,
+        amount: Number(data.amount),
+      });
       
-      return matchesSearch && matchesStatus;
-    }
-  );
-  
-  // Function to get badge style based on status
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "paid":
-        return <Badge className="bg-green-100 text-green-800 border-green-200">Pagado</Badge>;
-      case "pending":
-        return <Badge variant="outline" className="bg-yellow-50 text-yellow-800 border-yellow-200">Pendiente</Badge>;
-      case "overdue":
-        return <Badge variant="destructive">Vencido</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
+      const client = getUserById(updatedInvoice.clientId);
+      const extendedInvoice: ExtendedInvoice = {
+        ...updatedInvoice,
+        clientName: client?.name || 'Cliente desconocido'
+      };
+      
+      setInvoices(prev => 
+        prev.map(inv => inv.id === extendedInvoice.id ? extendedInvoice : inv)
+      );
+      
+      toast({
+        title: "Factura actualizada",
+        description: "La factura fue actualizada exitosamente",
+      });
+      
+      setEditingInvoice(null);
+      setActiveTab("list");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Hubo un problema al actualizar la factura",
+        variant: "destructive",
+      });
     }
   };
 
-  // Table columns definition
-  const columns: ColumnDef<any>[] = [
+  const handleDeleteInvoice = (id: string) => {
+    try {
+      deleteInvoice(id);
+      setInvoices(prev => prev.filter(inv => inv.id !== id));
+      
+      toast({
+        title: "Factura eliminada",
+        description: "La factura fue eliminada exitosamente",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Hubo un problema al eliminar la factura",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const columns: ColumnDef<ExtendedInvoice>[] = [
     {
-      accessorKey: "id",
-      header: "Factura",
-      cell: ({ row }) => <span className="font-medium">{row.original.id}</span>,
+      accessorKey: "concept",
+      header: "Concepto",
     },
     {
       accessorKey: "clientName",
       header: "Cliente",
     },
     {
-      accessorKey: "concept",
-      header: "Concepto",
-      cell: ({ row }) => (
-        <div className="max-w-xs truncate" title={row.original.concept}>
-          {row.original.concept}
-        </div>
-      ),
-    },
-    {
       accessorKey: "amount",
-      header: "Importe",
-      cell: ({ row }) => (
-        <span className="font-medium">${row.original.amount.toLocaleString()}</span>
-      ),
+      header: "Monto",
+      cell: ({ row }) => {
+        const amount = parseFloat(row.getValue("amount"));
+        const formatted = new Intl.NumberFormat("es-ES", {
+          style: "currency",
+          currency: "EUR",
+        }).format(amount);
+        return formatted;
+      },
     },
     {
       accessorKey: "issueDate",
       header: "Fecha",
-      cell: ({ row }) => new Date(row.original.issueDate).toLocaleDateString(),
+      cell: ({ row }) => {
+        return new Date(row.getValue("issueDate")).toLocaleDateString("es-ES");
+      },
     },
     {
       accessorKey: "status",
       header: "Estado",
-      cell: ({ row }) => getStatusBadge(row.original.status),
+      cell: ({ row }) => {
+        const status = row.getValue("status") as string;
+        return (
+          <div className="flex items-center">
+            <div
+              className={`h-2 w-2 rounded-full mr-2 ${
+                status === "paid" 
+                  ? "bg-green-500" 
+                  : status === "pending" 
+                  ? "bg-yellow-500" 
+                  : "bg-red-500"
+              }`}
+            />
+            {status === "paid" 
+              ? "Pagado" 
+              : status === "pending" 
+              ? "Pendiente" 
+              : "Vencido"}
+          </div>
+        );
+      },
     },
     {
       id: "actions",
-      cell: ({ row }) => (
-        <div className="flex justify-end gap-2">
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={() => {
-              setSelectedInvoice(row.original);
-              setActiveTab("edit");
-            }}
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={() => toast({
-              title: "Función en desarrollo",
-              description: `Descargar factura ${row.original.id}`
-            })}
-          >
-            <Download className="h-4 w-4" />
-          </Button>
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={() => handleDelete(row.original)}
-          >
-            <Trash2 className="h-4 w-4 text-destructive" />
-          </Button>
-        </div>
-      ),
+      cell: ({ row }) => {
+        const invoice = row.original;
+        return (
+          <div className="flex space-x-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => {
+                setEditingInvoice(invoice);
+                setActiveTab("edit");
+              }}
+            >
+              Editar
+            </Button>
+            <Button 
+              variant="destructive" 
+              size="sm"
+              onClick={() => handleDeleteInvoice(invoice.id)}
+            >
+              <Trash className="h-4 w-4" />
+            </Button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -296,181 +294,85 @@ const Payments = () => {
       <div className="animate-fade-in">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h1 className="text-3xl font-bold">Pagos y Facturas</h1>
+            <h1 className="text-3xl font-bold">Pagos</h1>
             <p className="text-muted-foreground">
-              {currentUser?.role === "admin" 
-                ? "Gestiona todos los pagos y facturas de la plataforma" 
-                : "Consulta tus facturas y estado de pagos"}
+              Gestiona las facturas y pagos de tu plataforma
             </p>
           </div>
-          {currentUser?.role === "admin" && (
-            <Button onClick={() => {
-              setSelectedInvoice(null);
-              setActiveTab("create");
-            }}>
-              <Plus className="mr-2 h-4 w-4" />
-              Nueva factura
-            </Button>
-          )}
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-4">
-            <TabsTrigger value="list">Listado de facturas</TabsTrigger>
-            <TabsTrigger value="create" disabled={activeTab === 'edit'}>
-              Nueva factura
-            </TabsTrigger>
-            {activeTab === 'edit' && (
-              <TabsTrigger value="edit">
-                Editar factura
-              </TabsTrigger>
-            )}
+          <TabsList>
+            <TabsTrigger value="list">Lista de Facturas</TabsTrigger>
+            <TabsTrigger value="create">Crear Nueva Factura</TabsTrigger>
+            {editingInvoice && <TabsTrigger value="edit">Editar Factura</TabsTrigger>}
           </TabsList>
-
-          <TabsContent value="list" className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Total facturado</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    ${invoices.reduce((sum, inv) => sum + inv.amount, 0).toLocaleString()}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    En {invoices.length} facturas
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Pendiente de cobro</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    ${invoices
-                      .filter(inv => inv.status === "pending" || inv.status === "overdue")
-                      .reduce((sum, inv) => sum + inv.amount, 0)
-                      .toLocaleString()}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    En {invoices.filter(inv => inv.status === "pending" || inv.status === "overdue").length} facturas
-                  </p>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-sm font-medium">Facturas vencidas</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold text-red-600">
-                    ${invoices
-                      .filter(inv => inv.status === "overdue")
-                      .reduce((sum, inv) => sum + inv.amount, 0)
-                      .toLocaleString()}
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    En {invoices.filter(inv => inv.status === "overdue").length} facturas
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
+          <TabsContent value="list">
             <Card>
               <CardHeader>
-                <CardTitle>Listado de facturas</CardTitle>
-                <div className="flex flex-col space-y-4 md:flex-row md:space-y-0 md:space-x-4">
-                  <div className="relative md:w-1/2">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <CardTitle>Facturas</CardTitle>
+                <CardDescription>
+                  Lista de todas las facturas en el sistema
+                </CardDescription>
+                <div className="flex flex-col sm:flex-row gap-4 mt-4">
+                  <div className="relative flex-1">
                     <Input
-                      placeholder="Buscar por cliente, factura o concepto..."
-                      className="pl-10"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Buscar por concepto o cliente..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
                     />
                   </div>
-                  <div className="md:w-1/3">
-                    <Select 
-                      value={statusFilter} 
-                      onValueChange={setStatusFilter}
-                    >
-                      <SelectTrigger className="w-full">
-                        <div className="flex items-center gap-2">
-                          <Filter className="h-4 w-4" />
-                          <SelectValue placeholder="Filtrar por estado" />
-                        </div>
+                  <div className="flex gap-2">
+                    <Select value={filterStatus} onValueChange={setFilterStatus}>
+                      <SelectTrigger className="w-[180px] gap-2">
+                        <Filter className="h-4 w-4" />
+                        <SelectValue placeholder="Estado" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todos los estados</SelectItem>
-                        <SelectItem value="paid">Pagados</SelectItem>
-                        <SelectItem value="pending">Pendientes</SelectItem>
-                        <SelectItem value="overdue">Vencidos</SelectItem>
+                        <SelectItem value="all">Todos</SelectItem>
+                        <SelectItem value="pending">Pendiente</SelectItem>
+                        <SelectItem value="paid">Pagado</SelectItem>
+                        <SelectItem value="overdue">Vencido</SelectItem>
                       </SelectContent>
                     </Select>
+                    <Button variant="outline">
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar
+                    </Button>
+                    <Button onClick={() => setActiveTab("create")}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      Nueva
+                    </Button>
                   </div>
                 </div>
               </CardHeader>
               <CardContent>
-                <DataTable 
-                  columns={columns} 
-                  data={filteredInvoices} 
-                  searchKey="clientName"
+                <DataTable
+                  columns={columns}
+                  data={invoices}
+                  searchKey="concept"
                 />
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="create" className="space-y-4">
+          <TabsContent value="create">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <div>
-                  <CardTitle>Nueva factura</CardTitle>
-                </div>
-                <Button 
-                  variant="ghost" 
-                  size="icon"
-                  onClick={() => setActiveTab("list")}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+              <CardHeader>
+                <CardTitle>Crear Nueva Factura</CardTitle>
+                <CardDescription>
+                  Completa el formulario para crear una nueva factura
+                </CardDescription>
               </CardHeader>
               <CardContent>
                 <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                  <form onSubmit={form.handleSubmit(handleCreateInvoice)} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <FormField
-                        control={form.control}
-                        name="clientName"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Cliente</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Nombre del cliente" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="amount"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Importe</FormLabel>
-                            <FormControl>
-                              <Input type="number" placeholder="0.00" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
                       <FormField
                         control={form.control}
                         name="concept"
                         render={({ field }) => (
-                          <FormItem className="col-span-1 md:col-span-2">
+                          <FormItem>
                             <FormLabel>Concepto</FormLabel>
                             <FormControl>
                               <Textarea placeholder="Descripción de la factura" {...field} />
@@ -479,13 +381,32 @@ const Payments = () => {
                           </FormItem>
                         )}
                       />
-                      
+
+                      <FormField
+                        control={form.control}
+                        name="amount"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Monto</FormLabel>
+                            <FormControl>
+                              <Input 
+                                type="number" 
+                                placeholder="0.00" 
+                                {...field} 
+                                onChange={e => field.onChange(Number(e.target.value))}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
                       <FormField
                         control={form.control}
                         name="issueDate"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Fecha de emisión</FormLabel>
+                            <FormLabel>Fecha de Emisión</FormLabel>
                             <FormControl>
                               <Input type="date" {...field} />
                             </FormControl>
@@ -493,22 +414,25 @@ const Payments = () => {
                           </FormItem>
                         )}
                       />
-                      
+
                       <FormField
                         control={form.control}
                         name="status"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Estado</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              defaultValue={field.value}
+                            >
                               <FormControl>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Seleccionar estado" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
-                                <SelectItem value="paid">Pagado</SelectItem>
                                 <SelectItem value="pending">Pendiente</SelectItem>
+                                <SelectItem value="paid">Pagado</SelectItem>
                                 <SelectItem value="overdue">Vencido</SelectItem>
                               </SelectContent>
                             </Select>
@@ -516,14 +440,17 @@ const Payments = () => {
                           </FormItem>
                         )}
                       />
-                      
+
                       <FormField
                         control={form.control}
                         name="paymentMethod"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Método de pago</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormLabel>Método de Pago</FormLabel>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              defaultValue={field.value}
+                            >
                               <FormControl>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Seleccionar método" />
@@ -539,16 +466,68 @@ const Payments = () => {
                           </FormItem>
                         )}
                       />
+
+                      <FormField
+                        control={form.control}
+                        name="clientId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Cliente</FormLabel>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Seleccionar cliente" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="client1">Cliente Demo</SelectItem>
+                                <SelectItem value="client2">Cliente Ejemplo</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={form.control}
+                        name="projectId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Proyecto</FormLabel>
+                            <Select 
+                              onValueChange={field.onChange} 
+                              defaultValue={field.value}
+                            >
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Seleccionar proyecto" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="project1">Proyecto Demo</SelectItem>
+                                <SelectItem value="project2">Proyecto Ejemplo</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                     </div>
-                    
-                    <Separator />
-                    
-                    <div className="flex justify-end gap-4">
-                      <Button type="button" variant="outline" onClick={() => setActiveTab("list")}>
+
+                    <div className="flex justify-end gap-3">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={() => setActiveTab("list")}
+                      >
                         Cancelar
                       </Button>
                       <Button type="submit">
-                        Crear factura
+                        Crear Factura
                       </Button>
                     </div>
                   </form>
@@ -557,76 +536,57 @@ const Payments = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="edit" className="space-y-4">
-            {selectedInvoice && (
+          <TabsContent value="edit">
+            {editingInvoice && (
               <Card>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle>Editar factura {selectedInvoice.id}</CardTitle>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon"
-                    onClick={() => {
-                      setActiveTab("list");
-                      setSelectedInvoice(null);
-                    }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
+                <CardHeader>
+                  <CardTitle>Editar Factura</CardTitle>
+                  <CardDescription>
+                    Modifica los detalles de la factura
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                    <form onSubmit={form.handleSubmit(handleUpdateInvoice)} className="space-y-6">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <FormField
                           control={form.control}
-                          name="clientName"
+                          name="concept"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Cliente</FormLabel>
+                              <FormLabel>Concepto</FormLabel>
                               <FormControl>
-                                <Input placeholder="Nombre del cliente" {...field} />
+                                <Textarea {...field} />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-                        
+
                         <FormField
                           control={form.control}
                           name="amount"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Importe</FormLabel>
+                              <FormLabel>Monto</FormLabel>
                               <FormControl>
-                                <Input type="number" placeholder="0.00" {...field} />
+                                <Input 
+                                  type="number" 
+                                  {...field} 
+                                  onChange={e => field.onChange(Number(e.target.value))}
+                                />
                               </FormControl>
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-                        
-                        <FormField
-                          control={form.control}
-                          name="concept"
-                          render={({ field }) => (
-                            <FormItem className="col-span-1 md:col-span-2">
-                              <FormLabel>Concepto</FormLabel>
-                              <FormControl>
-                                <Textarea placeholder="Descripción de la factura" {...field} />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        
+
                         <FormField
                           control={form.control}
                           name="issueDate"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Fecha de emisión</FormLabel>
+                              <FormLabel>Fecha de Emisión</FormLabel>
                               <FormControl>
                                 <Input type="date" {...field} />
                               </FormControl>
@@ -634,22 +594,25 @@ const Payments = () => {
                             </FormItem>
                           )}
                         />
-                        
+
                         <FormField
                           control={form.control}
                           name="status"
                           render={({ field }) => (
                             <FormItem>
                               <FormLabel>Estado</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <Select 
+                                onValueChange={field.onChange} 
+                                value={field.value}
+                              >
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue placeholder="Seleccionar estado" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value="paid">Pagado</SelectItem>
                                   <SelectItem value="pending">Pendiente</SelectItem>
+                                  <SelectItem value="paid">Pagado</SelectItem>
                                   <SelectItem value="overdue">Vencido</SelectItem>
                                 </SelectContent>
                               </Select>
@@ -657,14 +620,17 @@ const Payments = () => {
                             </FormItem>
                           )}
                         />
-                        
+
                         <FormField
                           control={form.control}
                           name="paymentMethod"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Método de pago</FormLabel>
-                              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormLabel>Método de Pago</FormLabel>
+                              <Select 
+                                onValueChange={field.onChange} 
+                                value={field.value}
+                              >
                                 <FormControl>
                                   <SelectTrigger>
                                     <SelectValue placeholder="Seleccionar método" />
@@ -680,34 +646,85 @@ const Payments = () => {
                             </FormItem>
                           )}
                         />
+
+                        <FormField
+                          control={form.control}
+                          name="clientId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Cliente</FormLabel>
+                              <Select 
+                                onValueChange={field.onChange} 
+                                value={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Seleccionar cliente" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="client1">Cliente Demo</SelectItem>
+                                  <SelectItem value="client2">Cliente Ejemplo</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="projectId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Proyecto</FormLabel>
+                              <Select 
+                                onValueChange={field.onChange} 
+                                value={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Seleccionar proyecto" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="project1">Proyecto Demo</SelectItem>
+                                  <SelectItem value="project2">Proyecto Ejemplo</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
                       </div>
-                      
-                      <Separator />
-                      
-                      <div className="flex justify-between gap-4">
+
+                      <div className="flex justify-end gap-3">
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={() => {
+                            setEditingInvoice(null);
+                            setActiveTab("list");
+                          }}
+                        >
+                          Cancelar
+                        </Button>
                         <Button 
                           type="button" 
                           variant="destructive" 
                           onClick={() => {
-                            handleDelete(selectedInvoice);
-                            setActiveTab("list");
+                            if (editingInvoice) {
+                              handleDeleteInvoice(editingInvoice.id);
+                              setEditingInvoice(null);
+                              setActiveTab("list");
+                            }
                           }}
                         >
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Eliminar factura
+                          Eliminar
                         </Button>
-                        
-                        <div className="flex gap-4">
-                          <Button type="button" variant="outline" onClick={() => {
-                            setActiveTab("list");
-                            setSelectedInvoice(null);
-                          }}>
-                            Cancelar
-                          </Button>
-                          <Button type="submit">
-                            Guardar cambios
-                          </Button>
-                        </div>
+                        <Button type="submit">
+                          Actualizar
+                        </Button>
                       </div>
                     </form>
                   </Form>
