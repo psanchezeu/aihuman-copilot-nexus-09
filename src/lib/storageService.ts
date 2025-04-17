@@ -1,4 +1,3 @@
-
 import { 
   User, 
   Jump, 
@@ -9,7 +8,8 @@ import {
   Ticket, 
   Rating, 
   ActivityLog, 
-  Cart 
+  Cart,
+  CartItem
 } from './models';
 
 // Storage keys

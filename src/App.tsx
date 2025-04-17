@@ -16,6 +16,7 @@ import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
 import JumpsCatalog from "./pages/JumpsCatalog";
+import Messages from "./pages/Messages";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const App = () => {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/jumps-catalog" element={<JumpsCatalog />} />
+              <Route path="/messages" element={<Messages />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

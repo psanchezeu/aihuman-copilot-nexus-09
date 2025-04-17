@@ -123,17 +123,17 @@ export interface ActivityLog {
   browser?: string;
 }
 
-export interface Cart {
-  items: CartItem[];
-  total: number;
-  discountCode?: string;
-  discountAmount?: number;
-}
-
 export interface CartItem {
   id: string;
   type: "jump" | "hours" | "service";
   name: string;
   price: number;
   quantity: number;
+}
+
+export interface Cart {
+  items: CartItem[];
+  total: number;
+  discountCode?: string;
+  discountAmount?: number;
 }
