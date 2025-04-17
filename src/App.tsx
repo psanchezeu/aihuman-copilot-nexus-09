@@ -20,7 +20,7 @@ import Messages from "./pages/Messages";
 
 const queryClient = new QueryClient();
 
-const App = () => {
+function App() {
   // Initialize sample data on first load
   useEffect(() => {
     initializeData();
@@ -49,6 +49,6 @@ const App = () => {
       </AuthProvider>
     </QueryClientProvider>
   );
-};
+}
 
 export default App;
