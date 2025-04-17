@@ -17,6 +17,13 @@ import Dashboard from "./pages/Dashboard";
 import Projects from "./pages/Projects";
 import JumpsCatalog from "./pages/JumpsCatalog";
 import Messages from "./pages/Messages";
+import Clients from "./pages/Clients";
+import Copilots from "./pages/Copilots";
+import Jumps from "./pages/Jumps";
+import Payments from "./pages/Payments";
+import Statistics from "./pages/Statistics";
+import Settings from "./pages/Settings";
+import Profile from "./pages/Profile";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +48,13 @@ function App() {
               <Route path="/projects" element={<Projects />} />
               <Route path="/jumps-catalog" element={<JumpsCatalog />} />
               <Route path="/messages" element={<Messages />} />
+              <Route path="/clients" element={<Clients />} />
+              <Route path="/copilots" element={<Copilots />} />
+              <Route path="/jumps" element={<Jumps />} />
+              <Route path="/payments" element={<Payments />} />
+              <Route path="/statistics" element={<Statistics />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/profile" element={<Profile />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
