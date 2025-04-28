@@ -141,7 +141,7 @@ const Sidebar = () => {
         <div className="flex justify-between items-center">
           {!collapsed && (
             <Link to="/dashboard" className="text-2xl font-bold text-bloodRed">
-              {collapsed ? "AC" : "AI COPILOT"}
+              {collapsed ? "AC" : "AI HUMAN COPILOT"}
             </Link>
           )}
           <Button 

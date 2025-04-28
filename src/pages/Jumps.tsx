@@ -283,7 +283,7 @@ const Jumps = () => {
           <div>
             <h1 className="text-3xl font-bold">Jumps</h1>
             <p className="text-muted-foreground">
-              Gestiona los Jumps disponibles en la plataforma
+              Desde aqui podras gestionar todos los Jumps disponibles en la plataforma
             </p>
           </div>
           {currentUser?.role === 'admin' && activeTab === "list" && (
