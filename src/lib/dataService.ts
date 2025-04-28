@@ -1,4 +1,3 @@
-
 import { 
   User, 
   Jump, 
@@ -14,8 +13,8 @@ import {
 import {
   getUsers,
   getUserById,
-  createUser,
-  updateUser,
+  createUser as storageCreateUser,
+  updateUser as storageUpdateUser,
   deleteUser,
   getJumps,
   getJumpById,
@@ -49,6 +48,10 @@ export const getUserByIdSafe = (id: string) => getUserById(id);
 export const getAllClients = () => getUsers().filter(u => u.role === 'client');
 export const getAllCopilots = () => getUsers().filter(u => u.role === 'copilot');
 export const getAllAdmins = () => getUsers().filter(u => u.role === 'admin');
+
+// Export the direct storage functions that are needed by UI components
+export const createUser = storageCreateUser;
+export const updateUser = storageUpdateUser;
 
 export const deleteUserSafe = (userId: string) => {
   // Check if user is associated with any projects

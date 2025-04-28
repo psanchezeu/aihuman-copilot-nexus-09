@@ -6,7 +6,6 @@ import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { 
   getAllProjects, 
   getProjectsForClient, 
@@ -21,7 +20,7 @@ import {
 } from "@/lib/dataService";
 import { Project, User, Jump } from "@/lib/models";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, Search, Package, CalendarIcon as CalendarLucideIcon, CalendarClock } from "lucide-react";
+import { PlusCircle, Search, Package, Calendar as CalendarLucideIcon, CalendarClock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import ActionButtons from "@/components/shared/ActionButtons";
 
@@ -65,16 +64,16 @@ import { useForm } from "react-hook-form";
 // Project schema
 const projectSchema = z.object({
   name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
-  description: z.string().min(10, "La descripción debe tener al menos 10 caracteres"),
-  clientId: z.string().min(1, "El cliente es requerido"),
-  copilotId: z.string().min(1, "El copiloto es requerido"),
+  description: z.string().optional(),
+  clientId: z.string().uuid("Cliente inválido"),
+  copilotId: z.string().uuid("Copiloto inválido"),
   status: z.enum(["planned", "in_progress", "completed"]),
   startDate: z.date(),
   estimatedEndDate: z.date(),
-  totalPrice: z.number().min(0, "El precio no puede ser negativo"),
-  estimatedHours: z.number().min(0, "Las horas no pueden ser negativas"),
+  totalPrice: z.number().optional(),
+  estimatedHours: z.number().optional(),
   originType: z.enum(["jump", "custom"]),
-  jumpId: z.string().optional(),
+  jumpId: z.string().uuid("Jump inválido").optional().nullable(),
 });
 
 type ProjectFormValues = z.infer<typeof projectSchema>;
@@ -87,10 +86,8 @@ const Projects = () => {
   const [copilots, setCopilots] = useState<User[]>([]);
   const [jumps, setJumps] = useState<Jump[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
-  const [selectedJump, setSelectedJump] = useState<Jump | null>(null);
 
   // Form setup
   const form = useForm<ProjectFormValues>({
@@ -102,16 +99,18 @@ const Projects = () => {
       copilotId: "",
       status: "planned",
       startDate: new Date(),
-      estimatedEndDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+      estimatedEndDate: new Date(),
       totalPrice: 0,
       estimatedHours: 0,
       originType: "custom",
+      jumpId: null,
     },
   });
 
   useEffect(() => {
     loadProjects();
-    loadUsers();
+    loadClients();
+    loadCopilots();
     loadJumps();
   }, [currentUser]);
 
@@ -119,7 +118,7 @@ const Projects = () => {
     if (editingProject) {
       form.reset({
         name: editingProject.name,
-        description: editingProject.description,
+        description: editingProject.description || "",
         clientId: editingProject.clientId,
         copilotId: editingProject.copilotId,
         status: editingProject.status,
@@ -128,15 +127,8 @@ const Projects = () => {
         totalPrice: editingProject.totalPrice,
         estimatedHours: editingProject.estimatedHours,
         originType: editingProject.originType,
-        jumpId: editingProject.jumpId,
+        jumpId: editingProject.jumpId || null,
       });
-
-      if (editingProject.jumpId) {
-        const jump = jumps.find(j => j.id === editingProject.jumpId);
-        setSelectedJump(jump || null);
-      } else {
-        setSelectedJump(null);
-      }
     } else {
       form.reset({
         name: "",
@@ -145,49 +137,32 @@ const Projects = () => {
         copilotId: "",
         status: "planned",
         startDate: new Date(),
-        estimatedEndDate: new Date(new Date().setMonth(new Date().getMonth() + 1)),
+        estimatedEndDate: new Date(),
         totalPrice: 0,
         estimatedHours: 0,
         originType: "custom",
+        jumpId: null,
       });
-      setSelectedJump(null);
     }
-  }, [editingProject, form, jumps]);
-
-  // Watch for originType and jumpId changes to update price and hours
-  const originType = form.watch("originType");
-  const jumpId = form.watch("jumpId");
-
-  useEffect(() => {
-    if (originType === "jump" && jumpId) {
-      const selectedJump = jumps.find(j => j.id === jumpId);
-      
-      if (selectedJump) {
-        form.setValue("totalPrice", selectedJump.basePrice);
-        form.setValue("estimatedHours", selectedJump.customizationHours);
-        setSelectedJump(selectedJump);
-      }
-    }
-  }, [originType, jumpId, jumps, form]);
+  }, [editingProject, form]);
 
   const loadProjects = () => {
     if (currentUser) {
-      let userProjects: Project[] = [];
-      
-      if (currentUser.role === 'admin') {
-        userProjects = getAllProjects();
-      } else if (currentUser.role === 'copilot') {
-        userProjects = getProjectsForCopilot(currentUser.id);
-      } else if (currentUser.role === 'client') {
-        userProjects = getProjectsForClient(currentUser.id);
+      if (currentUser.role === "admin") {
+        setProjects(getAllProjects());
+      } else if (currentUser.role === "client") {
+        setProjects(getProjectsForClient(currentUser.id));
+      } else if (currentUser.role === "copilot") {
+        setProjects(getProjectsForCopilot(currentUser.id));
       }
-      
-      setProjects(userProjects);
     }
   };
 
-  const loadUsers = () => {
+  const loadClients = () => {
     setClients(getAllClients());
+  };
+
+  const loadCopilots = () => {
     setCopilots(getAllCopilots());
   };
 
@@ -195,27 +170,20 @@ const Projects = () => {
     setJumps(getAllJumps());
   };
 
-  // Filter projects based on search query and status
-  const filteredProjects = projects.filter(
-    (project) => {
-      const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           project.description.toLowerCase().includes(searchQuery.toLowerCase());
-      
-      const matchesStatus = statusFilter === "all" || project.status === statusFilter;
-      
-      return matchesSearch && matchesStatus;
-    }
-  );
-
   const handleCreateProject = (data: ProjectFormValues) => {
     try {
-      const newProject = createProjectSafe({
+      createProjectSafe({
         ...data,
+        clientId: data.clientId,
+        copilotId: data.copilotId,
+        status: data.status,
         startDate: data.startDate.toISOString(),
         estimatedEndDate: data.estimatedEndDate.toISOString(),
+        originType: data.originType,
+        jumpId: data.jumpId === null ? undefined : data.jumpId,
       });
       
-      setProjects(prevProjects => [...prevProjects, newProject]);
+      loadProjects();
       
       toast({
         title: "Proyecto creado",
@@ -224,16 +192,10 @@ const Projects = () => {
       
       setIsDialogOpen(false);
     } catch (error) {
-      let errorMessage = "No se pudo crear el proyecto";
-      
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
       toast({
         variant: "destructive",
         title: "Error",
-        description: errorMessage,
+        description: "No se pudo crear el proyecto. Inténtalo de nuevo.",
       });
     }
   };
@@ -242,16 +204,22 @@ const Projects = () => {
     if (!editingProject) return;
     
     try {
-      const updatedProject = updateProjectSafe({
+      updateProjectSafe({
         ...editingProject,
-        ...data,
+        name: data.name,
+        description: data.description,
+        clientId: data.clientId,
+        copilotId: data.copilotId,
+        status: data.status,
         startDate: data.startDate.toISOString(),
         estimatedEndDate: data.estimatedEndDate.toISOString(),
+        totalPrice: data.totalPrice || 0,
+        estimatedHours: data.estimatedHours || 0,
+        originType: data.originType,
+        jumpId: data.jumpId === null ? undefined : data.jumpId,
       });
       
-      setProjects(prevProjects => 
-        prevProjects.map(project => project.id === updatedProject.id ? updatedProject : project)
-      );
+      loadProjects();
       
       toast({
         title: "Proyecto actualizado",
@@ -261,16 +229,10 @@ const Projects = () => {
       setEditingProject(null);
       setIsDialogOpen(false);
     } catch (error) {
-      let errorMessage = "No se pudo actualizar el proyecto";
-      
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      }
-      
       toast({
         variant: "destructive",
         title: "Error",
-        description: errorMessage,
+        description: "No se pudo actualizar el proyecto. Inténtalo de nuevo.",
       });
     }
   };
@@ -279,7 +241,7 @@ const Projects = () => {
     try {
       deleteProjectSafe(projectId);
       
-      setProjects(prevProjects => prevProjects.filter(project => project.id !== projectId));
+      loadProjects();
       
       toast({
         title: "Proyecto eliminado",
@@ -301,18 +263,19 @@ const Projects = () => {
   };
 
   const handleViewProject = (projectId: string) => {
-    const project = getProjectWithDetails(projectId);
+    const projectDetails = getProjectWithDetails(projectId);
     
-    if (project) {
+    if (projectDetails) {
+      // Display project details in a more detailed view or modal
       toast({
-        title: "Ver detalles del proyecto",
-        description: `Detalles de ${project.name}`,
+        title: "Detalles del proyecto",
+        description: `Mostrando detalles del proyecto ${projectDetails.name}`,
       });
     } else {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "No se pudo encontrar el proyecto",
+        description: "No se pudieron cargar los detalles del proyecto",
       });
     }
   };
@@ -330,45 +293,37 @@ const Projects = () => {
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'planned':
-        return <Badge variant="outline">Planificado</Badge>;
-      case 'in_progress':
-        return <Badge variant="secondary">En progreso</Badge>;
-      case 'completed':
-        return <Badge variant="default" className="bg-green-600">Completado</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   // Table columns definition
   const columns: ColumnDef<Project>[] = [
     {
       accessorKey: "name",
       header: "Nombre",
-      cell: ({ row }) => (
-        <div className="font-medium">{row.getValue("name")}</div>
-      ),
+      cell: ({ row }) => {
+        const project = row.original;
+        return (
+          <div className="flex items-center gap-3">
+            <Package className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <p className="font-medium">{project.name}</p>
+              <p className="text-sm text-muted-foreground">{project.description || "Sin descripción"}</p>
+            </div>
+          </div>
+        );
+      },
     },
     {
       accessorKey: "clientId",
       header: "Cliente",
       cell: ({ row }) => {
-        const project = row.original;
-        const client = clients.find(c => c.id === project.clientId);
-        
-        return client ? (
+        const client = clients.find(c => c.id === row.original.clientId);
+        return (
           <div className="flex items-center gap-2">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={client.avatar} alt={client.name} />
-              <AvatarFallback>{client.name.charAt(0)}</AvatarFallback>
+            <Avatar>
+              <AvatarImage src={client?.avatar} alt={client?.name} />
+              <AvatarFallback>{client?.name?.charAt(0)}</AvatarFallback>
             </Avatar>
-            <span>{client.name}</span>
+            <span>{client?.name || "N/A"}</span>
           </div>
-        ) : (
-          <span>Cliente no encontrado</span>
         );
       },
     },
@@ -376,26 +331,24 @@ const Projects = () => {
       accessorKey: "copilotId",
       header: "Copiloto",
       cell: ({ row }) => {
-        const project = row.original;
-        const copilot = copilots.find(c => c.id === project.copilotId);
-        
-        return copilot ? (
+        const copilot = copilots.find(c => c.id === row.original.copilotId);
+        return (
           <div className="flex items-center gap-2">
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={copilot.avatar} alt={copilot.name} />
-              <AvatarFallback>{copilot.name.charAt(0)}</AvatarFallback>
+            <Avatar>
+              <AvatarImage src={copilot?.avatar} alt={copilot?.name} />
+              <AvatarFallback>{copilot?.name?.charAt(0)}</AvatarFallback>
             </Avatar>
-            <span>{copilot.name}</span>
+            <span>{copilot?.name || "N/A"}</span>
           </div>
-        ) : (
-          <span>Copiloto no encontrado</span>
         );
       },
     },
     {
       accessorKey: "status",
       header: "Estado",
-      cell: ({ row }) => getStatusBadge(row.getValue("status")),
+      cell: ({ row }) => (
+        <span>{row.original.status}</span>
+      ),
     },
     {
       accessorKey: "startDate",
@@ -409,31 +362,23 @@ const Projects = () => {
     },
     {
       accessorKey: "totalPrice",
-      header: "Precio",
+      header: "Precio total",
       cell: ({ row }) => (
-        <div className="font-medium">
-          {new Intl.NumberFormat('es-ES', {
-            style: 'currency',
-            currency: 'EUR'
-          }).format(row.getValue("totalPrice"))}
-        </div>
+        <span>{row.original.totalPrice || "No especificado"}</span>
       ),
     },
     {
       id: "actions",
       cell: ({ row }) => {
-        // Only admins can edit and delete projects, or copilots can update their own projects
-        const canEdit = currentUser?.role === "admin" || 
-                       (currentUser?.role === "copilot" && currentUser.id === row.original.copilotId);
-        const canDelete = currentUser?.role === "admin";
+        const isAdmin = currentUser?.role === "admin";
         
         return (
           <ActionButtons
             onView={() => handleViewProject(row.original.id)}
-            onEdit={canEdit ? () => handleEditProject(row.original) : undefined}
-            onDelete={canDelete ? () => handleDeleteProject(row.original.id) : undefined}
-            hideEdit={!canEdit}
-            hideDelete={!canDelete}
+            onEdit={isAdmin ? () => handleEditProject(row.original) : undefined}
+            onDelete={isAdmin ? () => handleDeleteProject(row.original.id) : undefined}
+            hideEdit={!isAdmin}
+            hideDelete={!isAdmin}
             itemName="proyecto"
           />
         );
@@ -451,24 +396,22 @@ const Projects = () => {
             <h1 className="text-3xl font-bold">Proyectos</h1>
             <p className="text-muted-foreground">
               {currentUser?.role === "admin" 
-                ? "Gestiona todos los proyectos de la plataforma" 
-                : currentUser?.role === "copilot"
-                ? "Administra los proyectos asignados a ti"
-                : "Visualiza tus proyectos contratados"}
+                ? "Gestiona todos los proyectos registrados en la plataforma" 
+                : "Proyectos asignados a ti"}
             </p>
           </div>
-          {(currentUser?.role === "admin") && (
+          {(currentUser?.role === "admin" || currentUser?.role === "client") && (
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button onClick={() => setEditingProject(null)}>
                   <PlusCircle className="mr-2 h-4 w-4" />
-                  Nuevo proyecto
+                  Añadir proyecto
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[800px]">
+              <DialogContent className="sm:max-w-[600px]">
                 <DialogHeader>
                   <DialogTitle>
-                    {editingProject ? "Editar Proyecto" : "Crear Nuevo Proyecto"}
+                    {editingProject ? "Editar Proyecto" : "Añadir Proyecto"}
                   </DialogTitle>
                   <DialogDescription>
                     {editingProject 
@@ -476,6 +419,7 @@ const Projects = () => {
                       : "Completa el formulario para crear un nuevo proyecto"}
                   </DialogDescription>
                 </DialogHeader>
+                
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -484,7 +428,7 @@ const Projects = () => {
                         name="name"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Nombre del proyecto</FormLabel>
+                            <FormLabel>Nombre</FormLabel>
                             <FormControl>
                               <Input placeholder="Nombre del proyecto" {...field} />
                             </FormControl>
@@ -492,20 +436,73 @@ const Projects = () => {
                           </FormItem>
                         )}
                       />
-                      
+                      <FormField
+                        control={form.control}
+                        name="description"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Descripción</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Descripción del proyecto" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="clientId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Cliente</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona un cliente" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {clients.map((client) => (
+                                  <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name="copilotId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Copiloto</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona un copiloto" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                {copilots.map((copilot) => (
+                                  <SelectItem key={copilot.id} value={copilot.id}>{copilot.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                       <FormField
                         control={form.control}
                         name="status"
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>Estado</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              defaultValue={field.value}
-                            >
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
                               <FormControl>
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona el estado" />
+                                  <SelectValue placeholder="Selecciona un estado" />
                                 </SelectTrigger>
                               </FormControl>
                               <SelectContent>
@@ -518,132 +515,6 @@ const Projects = () => {
                           </FormItem>
                         )}
                       />
-                      
-                      <FormField
-                        control={form.control}
-                        name="description"
-                        render={({ field }) => (
-                          <FormItem className="md:col-span-2">
-                            <FormLabel>Descripción</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Descripción del proyecto" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="clientId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Cliente</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              defaultValue={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona un cliente" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {clients.map((client) => (
-                                  <SelectItem key={client.id} value={client.id}>
-                                    {client.name} - {client.company || "Sin empresa"}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="copilotId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Copiloto</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              defaultValue={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona un copiloto" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {copilots.map((copilot) => (
-                                  <SelectItem key={copilot.id} value={copilot.id}>
-                                    {copilot.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="originType"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Tipo de proyecto</FormLabel>
-                            <Select 
-                              onValueChange={field.onChange} 
-                              defaultValue={field.value}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Tipo de origen" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="jump">Basado en Jump</SelectItem>
-                                <SelectItem value="custom">Personalizado</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      {originType === "jump" && (
-                        <FormField
-                          control={form.control}
-                          name="jumpId"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Jump</FormLabel>
-                              <Select 
-                                onValueChange={field.onChange} 
-                                defaultValue={field.value}
-                              >
-                                <FormControl>
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Selecciona un Jump" />
-                                  </SelectTrigger>
-                                </FormControl>
-                                <SelectContent>
-                                  {jumps.map((jump) => (
-                                    <SelectItem key={jump.id} value={jump.id}>
-                                      {jump.name} - {jump.basePrice}€
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                      )}
-                      
                       <FormField
                         control={form.control}
                         name="startDate"
@@ -662,7 +533,7 @@ const Projects = () => {
                                     ) : (
                                       <span>Selecciona una fecha</span>
                                     )}
-                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                    <CalendarLucideIcon className="ml-auto h-4 w-4 opacity-50" />
                                   </Button>
                                 </FormControl>
                               </PopoverTrigger>
@@ -672,7 +543,7 @@ const Projects = () => {
                                   selected={field.value}
                                   onSelect={field.onChange}
                                   disabled={(date) =>
-                                    date < new Date(new Date().setDate(new Date().getDate() - 1))
+                                    date > new Date()
                                   }
                                   initialFocus
                                 />
@@ -682,7 +553,6 @@ const Projects = () => {
                           </FormItem>
                         )}
                       />
-                      
                       <FormField
                         control={form.control}
                         name="estimatedEndDate"
@@ -701,7 +571,7 @@ const Projects = () => {
                                     ) : (
                                       <span>Selecciona una fecha</span>
                                     )}
-                                    <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                    <CalendarLucideIcon className="ml-auto h-4 w-4 opacity-50" />
                                   </Button>
                                 </FormControl>
                               </PopoverTrigger>
@@ -711,7 +581,7 @@ const Projects = () => {
                                   selected={field.value}
                                   onSelect={field.onChange}
                                   disabled={(date) =>
-                                    date < form.getValues("startDate")
+                                    date < new Date()
                                   }
                                   initialFocus
                                 />
@@ -721,30 +591,19 @@ const Projects = () => {
                           </FormItem>
                         )}
                       />
-                      
                       <FormField
                         control={form.control}
                         name="totalPrice"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Precio total (€)</FormLabel>
+                            <FormLabel>Precio total</FormLabel>
                             <FormControl>
-                              <Input 
-                                type="number" 
-                                placeholder="0.00" 
-                                {...field} 
-                                onChange={e => field.onChange(Number(e.target.value))}
-                                disabled={originType === "jump" && !!jumpId}
-                              />
+                              <Input type="number" placeholder="Precio total del proyecto" {...field} />
                             </FormControl>
-                            <FormDescription>
-                              {originType === "jump" && selectedJump ? "Precio base del Jump seleccionado" : ""}
-                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
-                      
                       <FormField
                         control={form.control}
                         name="estimatedHours"
@@ -752,21 +611,62 @@ const Projects = () => {
                           <FormItem>
                             <FormLabel>Horas estimadas</FormLabel>
                             <FormControl>
-                              <Input 
-                                type="number" 
-                                placeholder="0" 
-                                {...field} 
-                                onChange={e => field.onChange(Number(e.target.value))}
-                                disabled={originType === "jump" && !!jumpId}
-                              />
+                              <Input type="number" placeholder="Horas estimadas del proyecto" {...field} />
                             </FormControl>
-                            <FormDescription>
-                              {originType === "jump" && selectedJump ? "Horas de personalización del Jump seleccionado" : ""}
-                            </FormDescription>
                             <FormMessage />
                           </FormItem>
                         )}
                       />
+                      <FormField
+                        control={form.control}
+                        name="originType"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Tipo de origen</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Selecciona un tipo de origen" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="jump">Jump</SelectItem>
+                                <SelectItem value="custom">Custom</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      {form.watch("originType") === "jump" && (
+                        <FormField
+                          control={form.control}
+                          name="jumpId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Jump</FormLabel>
+                              <Select 
+                                onValueChange={field.onChange} 
+                                value={field.value || undefined}
+                                defaultValue={field.value || undefined}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Selecciona un Jump" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value={null}>Ninguno</SelectItem>
+                                  {jumps.map((jump) => (
+                                    <SelectItem key={jump.id} value={jump.id}>{jump.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      )}
                     </div>
                     <DialogFooter>
                       <Button type="submit">
@@ -780,41 +680,24 @@ const Projects = () => {
           )}
         </div>
 
-        <div className="flex gap-4 mb-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar proyectos..."
-              className="pl-10"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          <Select
-            value={statusFilter}
-            onValueChange={(value) => setStatusFilter(value)}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos los estados</SelectItem>
-              <SelectItem value="planned">Planificados</SelectItem>
-              <SelectItem value="in_progress">En progreso</SelectItem>
-              <SelectItem value="completed">Completados</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
         <Card>
           <CardHeader>
             <CardTitle>Listado de proyectos</CardTitle>
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nombre, cliente o copiloto..."
+                className="pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </CardHeader>
           <CardContent>
-            {filteredProjects.length > 0 ? (
+            {projects.length > 0 ? (
               <DataTable 
                 columns={columns} 
-                data={filteredProjects} 
+                data={projects} 
                 searchKey="name"
               />
             ) : (
@@ -822,7 +705,7 @@ const Projects = () => {
                 <Package className="h-12 w-12 text-muted-foreground mb-2" />
                 <h3 className="text-lg font-medium">No se encontraron proyectos</h3>
                 <p className="text-sm text-muted-foreground mt-1">
-                  {searchQuery || statusFilter !== "all"
+                  {searchQuery 
                     ? "No hay resultados para tu búsqueda" 
                     : "Aún no hay proyectos registrados"}
                 </p>
