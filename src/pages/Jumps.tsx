@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import AppLayout from '@/components/layout/AppLayout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -151,13 +150,22 @@ const Jumps = () => {
 
   const handleCreateJump = (data: z.infer<typeof jumpSchema>) => {
     try {
-      const newJump = createJump({
-        ...data,
+      const newJump: Omit<Jump, "id" | "createdAt" | "updatedAt"> = {
+        name: data.name,
+        description: data.description,
+        category: data.category,
+        type: data.type,
+        modules: data.modules,
         basePrice: Number(data.basePrice),
         customizationHours: Number(data.customizationHours),
-        image: '/placeholder.svg', // Default placeholder image
-      });
-      
+        imageUrl: '/placeholder.svg',
+        documentation: data.documentation,
+        visibility: data.visibility,
+        status: data.status,
+        suggestedCopilots: data.suggestedCopilots || []
+      };
+
+      createJump(newJump);
       setJumps(prev => [...prev, newJump]);
       
       toast({

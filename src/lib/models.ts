@@ -1,11 +1,10 @@
-
 // Models for our application
 export interface User {
   id: string;
   name: string;
   email: string;
   role: "admin" | "copilot" | "client";
-  avatar?: string;
+  avatar: string;
   createdAt: string;
   phone?: string;
   company?: string;
@@ -30,12 +29,14 @@ export interface Jump {
   modules: string[];
   basePrice: number;
   customizationHours: number;
-  image?: string;
+  imageUrl?: string;
   documentation?: string;
   visibility: "admin" | "copilot" | "client" | "all";
   status: "active" | "inactive";
   suggestedCopilots: string[];
+  createdBy?: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface Project {

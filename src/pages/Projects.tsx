@@ -4,94 +4,72 @@ import { useAuth } from "@/contexts/AuthContext";
 import { DataTable } from "@/components/ui/data-table";
 import { ColumnDef } from "@tanstack/react-table";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { 
-  getAllProjects, 
-  getProjectsForClient, 
-  getProjectsForCopilot,
-  getAllClients,
-  getAllCopilots,
-  getAllJumps,
-  createProjectSafe,
-  updateProjectSafe,
-  deleteProjectSafe,
-  getProjectWithDetails
-} from "@/lib/dataService";
-import { Project, User, Jump } from "@/lib/models";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, Search, Package, Calendar as CalendarLucideIcon, CalendarClock } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Calendar } from "@/components/ui/calendar"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import { CalendarIcon, CheckCircle, Circle, Copy, CopyCheck, PlusCircle, Search, User, User2, Wrench } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
-import ActionButtons from "@/components/shared/ActionButtons";
-
-// Project form dialog
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
-} from "@/components/ui/select";
-import { format } from "date-fns";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
+import { Project, User as UserModel, Jump } from "@/lib/models";
+import { getProjects, createProject, updateProject, deleteProject, getUsersByRole, getJumps } from "@/lib/storageService";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Textarea } from "@/components/ui/textarea";
 
-// Project schema
-const projectSchema = z.object({
-  name: z.string().min(2, "El nombre debe tener al menos 2 caracteres"),
+// Form validation schema
+const formSchema = z.object({
+  name: z.string().min(3, {
+    message: "El nombre debe tener al menos 3 caracteres.",
+  }),
   description: z.string().optional(),
-  clientId: z.string().uuid("Cliente inválido"),
-  copilotId: z.string().uuid("Copiloto inválido"),
+  clientId: z.string().min(1, {
+    message: "Debes seleccionar un cliente.",
+  }),
+  copilotId: z.string().min(1, {
+    message: "Debes seleccionar un copiloto.",
+  }),
   status: z.enum(["planned", "in_progress", "completed"]),
   startDate: z.date(),
   estimatedEndDate: z.date(),
   totalPrice: z.number().optional(),
   estimatedHours: z.number().optional(),
   originType: z.enum(["jump", "custom"]),
-  jumpId: z.string().uuid("Jump inválido").optional().nullable(),
+  jumpId: z.string().optional(),
 });
-
-type ProjectFormValues = z.infer<typeof projectSchema>;
 
 const Projects = () => {
   const { currentUser } = useAuth();
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("list");
   const [projects, setProjects] = useState<Project[]>([]);
-  const [clients, setClients] = useState<User[]>([]);
-  const [copilots, setCopilots] = useState<User[]>([]);
-  const [jumps, setJumps] = useState<Jump[]>([]);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [clientFilter, setClientFilter] = useState("all");
+  const [copilotFilter, setCopilotFilter] = useState("all");
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [clients, setClients] = useState<UserModel[]>([]);
+  const [copilots, setCopilots] = useState<UserModel[]>([]);
+  const [jumps, setJumps] = useState<Jump[]>([]);
+  const [isCopied, setIsCopied] = useState(false);
 
   // Form setup
-  const form = useForm<ProjectFormValues>({
-    resolver: zodResolver(projectSchema),
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
     defaultValues: {
       name: "",
       description: "",
@@ -103,7 +81,7 @@ const Projects = () => {
       totalPrice: 0,
       estimatedHours: 0,
       originType: "custom",
-      jumpId: null,
+      jumpId: "",
     },
   });
 
@@ -124,10 +102,10 @@ const Projects = () => {
         status: editingProject.status,
         startDate: new Date(editingProject.startDate),
         estimatedEndDate: new Date(editingProject.estimatedEndDate),
-        totalPrice: editingProject.totalPrice,
-        estimatedHours: editingProject.estimatedHours,
+        totalPrice: editingProject.totalPrice || 0,
+        estimatedHours: editingProject.estimatedHours || 0,
         originType: editingProject.originType,
-        jumpId: editingProject.jumpId || null,
+        jumpId: editingProject.jumpId,
       });
     } else {
       form.reset({
@@ -141,73 +119,75 @@ const Projects = () => {
         totalPrice: 0,
         estimatedHours: 0,
         originType: "custom",
-        jumpId: null,
+        jumpId: "",
       });
     }
   }, [editingProject, form]);
 
+  useEffect(() => {
+    applyFilters();
+  }, [projects, searchTerm, statusFilter, clientFilter, copilotFilter]);
+
   const loadProjects = () => {
-    if (currentUser) {
-      if (currentUser.role === "admin") {
-        setProjects(getAllProjects());
-      } else if (currentUser.role === "client") {
-        setProjects(getProjectsForClient(currentUser.id));
-      } else if (currentUser.role === "copilot") {
-        setProjects(getProjectsForCopilot(currentUser.id));
-      }
+    const allProjects = getProjects();
+    
+    // Filter projects based on user role
+    let filteredByRole = allProjects;
+    if (currentUser && currentUser.role === 'client') {
+      filteredByRole = allProjects.filter(project => project.clientId === currentUser.id);
+    } else if (currentUser && currentUser.role === 'copilot') {
+      filteredByRole = allProjects.filter(project => project.copilotId === currentUser.id);
     }
+    
+    setProjects(filteredByRole);
+    setFilteredProjects(filteredByRole);
   };
 
   const loadClients = () => {
-    setClients(getAllClients());
+    const allClients = getUsersByRole('client');
+    setClients(allClients);
   };
 
   const loadCopilots = () => {
-    setCopilots(getAllCopilots());
+    const allCopilots = getUsersByRole('copilot');
+    setCopilots(allCopilots);
   };
 
   const loadJumps = () => {
-    setJumps(getAllJumps());
+    const allJumps = getJumps();
+    setJumps(allJumps);
   };
 
-  const handleCreateProject = (data: ProjectFormValues) => {
-    try {
-      createProjectSafe({
-        ...data,
-        clientId: data.clientId,
-        copilotId: data.copilotId,
-        status: data.status,
-        startDate: data.startDate.toISOString(),
-        estimatedEndDate: data.estimatedEndDate.toISOString(),
-        originType: data.originType,
-        jumpId: data.jumpId === null ? undefined : data.jumpId,
-      });
-      
-      loadProjects();
-      
-      toast({
-        title: "Proyecto creado",
-        description: `${data.name} ha sido creado exitosamente`,
-      });
-      
-      setIsDialogOpen(false);
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "No se pudo crear el proyecto. Inténtalo de nuevo.",
-      });
-    }
-  };
-
-  const handleUpdateProject = (data: ProjectFormValues) => {
-    if (!editingProject) return;
+  const applyFilters = () => {
+    let result = projects;
     
+    if (searchTerm) {
+      result = result.filter(project => 
+        project.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        project.description.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+    }
+    
+    if (statusFilter !== 'all') {
+      result = result.filter(project => project.status === statusFilter);
+    }
+    
+    if (clientFilter !== 'all') {
+      result = result.filter(project => project.clientId === clientFilter);
+    }
+    
+    if (copilotFilter !== 'all') {
+      result = result.filter(project => project.copilotId === copilotFilter);
+    }
+    
+    setFilteredProjects(result);
+  };
+
+  const handleCreateProject = (data: z.infer<typeof formSchema>) => {
     try {
-      updateProjectSafe({
-        ...editingProject,
+      const newProject: Omit<Project, "id" | "createdAt"> = {
         name: data.name,
-        description: data.description,
+        description: data.description || "",
         clientId: data.clientId,
         copilotId: data.copilotId,
         status: data.status,
@@ -216,177 +196,111 @@ const Projects = () => {
         totalPrice: data.totalPrice || 0,
         estimatedHours: data.estimatedHours || 0,
         originType: data.originType,
-        jumpId: data.jumpId === null ? undefined : data.jumpId,
+        jumpId: data.jumpId
+      };
+
+      createProject(newProject);
+      
+      setProjects(prev => [...prev, newProject]);
+      
+      toast({
+        title: "Proyecto creado",
+        description: "El proyecto fue creado exitosamente",
       });
       
-      loadProjects();
+      setActiveTab("list");
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Hubo un problema al crear el proyecto",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleUpdateProject = (data: z.infer<typeof formSchema>) => {
+    if (!editingProject) return;
+    
+    try {
+      const updatedProject = updateProject({
+        ...editingProject,
+        name: data.name,
+        description: data.description || "",
+        clientId: data.clientId,
+        copilotId: data.copilotId,
+        status: data.status,
+        startDate: data.startDate.toISOString(),
+        estimatedEndDate: data.estimatedEndDate.toISOString(),
+        totalPrice: data.totalPrice || 0,
+        estimatedHours: data.estimatedHours || 0,
+        originType: data.originType,
+        jumpId: data.jumpId
+      });
+      
+      setProjects(prev => 
+        prev.map(project => project.id === updatedProject.id ? updatedProject : project)
+      );
       
       toast({
         title: "Proyecto actualizado",
-        description: `${data.name} ha sido actualizado exitosamente`,
+        description: "El proyecto fue actualizado exitosamente",
       });
       
       setEditingProject(null);
-      setIsDialogOpen(false);
+      setActiveTab("list");
     } catch (error) {
       toast({
-        variant: "destructive",
         title: "Error",
-        description: "No se pudo actualizar el proyecto. Inténtalo de nuevo.",
+        description: "Hubo un problema al actualizar el proyecto",
+        variant: "destructive",
       });
     }
   };
 
-  const handleDeleteProject = (projectId: string) => {
+  const handleDeleteProject = (id: string) => {
     try {
-      deleteProjectSafe(projectId);
+      deleteProject(id);
+      setProjects(prev => prev.filter(project => project.id !== id));
       
-      loadProjects();
-      
-      toast({
-        title: "Proyecto eliminado",
-        description: "El proyecto ha sido eliminado exitosamente",
-      });
-    } catch (error) {
-      let errorMessage = "No se pudo eliminar el proyecto";
-      
-      if (error instanceof Error) {
-        errorMessage = error.message;
+      if (editingProject && editingProject.id === id) {
+        setEditingProject(null);
       }
       
       toast({
-        variant: "destructive",
-        title: "Error",
-        description: errorMessage,
+        title: "Proyecto eliminado",
+        description: "El proyecto fue eliminado exitosamente",
       });
-    }
-  };
-
-  const handleViewProject = (projectId: string) => {
-    const projectDetails = getProjectWithDetails(projectId);
-    
-    if (projectDetails) {
-      // Display project details in a more detailed view or modal
+      
+      setActiveTab("list");
+    } catch (error) {
       toast({
-        title: "Detalles del proyecto",
-        description: `Mostrando detalles del proyecto ${projectDetails.name}`,
-      });
-    } else {
-      toast({
-        variant: "destructive",
         title: "Error",
-        description: "No se pudieron cargar los detalles del proyecto",
+        description: "Hubo un problema al eliminar el proyecto",
+        variant: "destructive",
       });
     }
   };
 
-  const handleEditProject = (project: Project) => {
-    setEditingProject(project);
-    setIsDialogOpen(true);
-  };
-
-  const handleSubmit = (data: ProjectFormValues) => {
-    if (editingProject) {
-      handleUpdateProject(data);
-    } else {
-      handleCreateProject(data);
+  const copyApiKey = () => {
+    if (currentUser?.apiKey) {
+      navigator.clipboard.writeText(currentUser.apiKey);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
     }
   };
 
-  // Table columns definition
-  const columns: ColumnDef<Project>[] = [
-    {
-      accessorKey: "name",
-      header: "Nombre",
-      cell: ({ row }) => {
-        const project = row.original;
-        return (
-          <div className="flex items-center gap-3">
-            <Package className="h-5 w-5 text-muted-foreground" />
-            <div>
-              <p className="font-medium">{project.name}</p>
-              <p className="text-sm text-muted-foreground">{project.description || "Sin descripción"}</p>
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "clientId",
-      header: "Cliente",
-      cell: ({ row }) => {
-        const client = clients.find(c => c.id === row.original.clientId);
-        return (
-          <div className="flex items-center gap-2">
-            <Avatar>
-              <AvatarImage src={client?.avatar} alt={client?.name} />
-              <AvatarFallback>{client?.name?.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <span>{client?.name || "N/A"}</span>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "copilotId",
-      header: "Copiloto",
-      cell: ({ row }) => {
-        const copilot = copilots.find(c => c.id === row.original.copilotId);
-        return (
-          <div className="flex items-center gap-2">
-            <Avatar>
-              <AvatarImage src={copilot?.avatar} alt={copilot?.name} />
-              <AvatarFallback>{copilot?.name?.charAt(0)}</AvatarFallback>
-            </Avatar>
-            <span>{copilot?.name || "N/A"}</span>
-          </div>
-        );
-      },
-    },
-    {
-      accessorKey: "status",
-      header: "Estado",
-      cell: ({ row }) => (
-        <span>{row.original.status}</span>
-      ),
-    },
-    {
-      accessorKey: "startDate",
-      header: "Fecha inicio",
-      cell: ({ row }) => (
-        <div className="flex items-center gap-2">
-          <CalendarLucideIcon className="h-4 w-4 text-muted-foreground" />
-          <span>{new Date(row.getValue("startDate")).toLocaleDateString()}</span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "totalPrice",
-      header: "Precio total",
-      cell: ({ row }) => (
-        <span>{row.original.totalPrice || "No especificado"}</span>
-      ),
-    },
-    {
-      id: "actions",
-      cell: ({ row }) => {
-        const isAdmin = currentUser?.role === "admin";
-        
-        return (
-          <ActionButtons
-            onView={() => handleViewProject(row.original.id)}
-            onEdit={isAdmin ? () => handleEditProject(row.original) : undefined}
-            onDelete={isAdmin ? () => handleDeleteProject(row.original.id) : undefined}
-            hideEdit={!isAdmin}
-            hideDelete={!isAdmin}
-            itemName="proyecto"
-          />
-        );
-      },
-    },
-  ];
-
-  const isAdmin = currentUser?.role === "admin";
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'planned':
+        return <Badge variant="secondary">Planificado</Badge>;
+      case 'in_progress':
+        return <Badge className="bg-blue-600">En progreso</Badge>;
+      case 'completed':
+        return <Badge className="bg-green-600">Completado</Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
 
   return (
     <AppLayout>
@@ -395,270 +309,211 @@ const Projects = () => {
           <div>
             <h1 className="text-3xl font-bold">Proyectos</h1>
             <p className="text-muted-foreground">
-              {currentUser?.role === "admin" 
-                ? "Gestiona todos los proyectos registrados en la plataforma" 
-                : "Proyectos asignados a ti"}
+              Gestiona todos los proyectos de la plataforma
             </p>
           </div>
-          {(currentUser?.role === "admin" || currentUser?.role === "client") && (
-            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={() => setEditingProject(null)}>
-                  <PlusCircle className="mr-2 h-4 w-4" />
-                  Añadir proyecto
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[600px]">
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingProject ? "Editar Proyecto" : "Añadir Proyecto"}
-                  </DialogTitle>
-                  <DialogDescription>
-                    {editingProject 
-                      ? "Modifica los detalles del proyecto" 
-                      : "Completa el formulario para crear un nuevo proyecto"}
-                  </DialogDescription>
-                </DialogHeader>
+          {currentUser?.role === 'admin' && activeTab === "list" && (
+            <Button onClick={() => setActiveTab("create")}>
+              <PlusCircle className="h-4 w-4 mr-2" /> Nuevo Proyecto
+            </Button>
+          )}
+        </div>
+
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList>
+            <TabsTrigger value="list">Lista de Proyectos</TabsTrigger>
+            {currentUser?.role === 'admin' && (
+              <TabsTrigger value="create">Crear Proyecto</TabsTrigger>
+            )}
+            {editingProject && currentUser?.role === 'admin' && (
+              <TabsTrigger value="edit">Editar Proyecto</TabsTrigger>
+            )}
+          </TabsList>
+
+          <TabsContent value="list">
+            {/* Filters */}
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar proyectos..."
+                  className="pl-10"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Select
+                  value={statusFilter}
+                  onValueChange={(value) => setStatusFilter(value)}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los estados</SelectItem>
+                    <SelectItem value="planned">Planificado</SelectItem>
+                    <SelectItem value="in_progress">En progreso</SelectItem>
+                    <SelectItem value="completed">Completado</SelectItem>
+                  </SelectContent>
+                </Select>
                 
-                <Form {...form}>
-                  <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <FormField
-                        control={form.control}
-                        name="name"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Nombre</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Nombre del proyecto" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
+                <Select
+                  value={clientFilter}
+                  onValueChange={(value) => setClientFilter(value)}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Cliente" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los clientes</SelectItem>
+                    {clients.map((client) => (
+                      <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                <Select
+                  value={copilotFilter}
+                  onValueChange={(value) => setCopilotFilter(value)}
+                >
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Copiloto" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los copilotos</SelectItem>
+                    {copilots.map((copilot) => (
+                      <SelectItem key={copilot.id} value={copilot.id}>{copilot.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Projects table */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Proyectos Disponibles</CardTitle>
+                <CardDescription>
+                  {filteredProjects.length} proyectos encontrados
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {filteredProjects.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nombre</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Copiloto</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Inicio</TableHead>
+                        <TableHead>Fin Estimado</TableHead>
+                        {currentUser?.role === 'admin' && (
+                          <TableHead className="text-right">Acciones</TableHead>
                         )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="description"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Descripción</FormLabel>
-                            <FormControl>
-                              <Input placeholder="Descripción del proyecto" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="clientId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Cliente</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona un cliente" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {clients.map((client) => (
-                                  <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="copilotId"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Copiloto</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona un copiloto" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {copilots.map((copilot) => (
-                                  <SelectItem key={copilot.id} value={copilot.id}>{copilot.name}</SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="status"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Estado</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona un estado" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="planned">Planificado</SelectItem>
-                                <SelectItem value="in_progress">En progreso</SelectItem>
-                                <SelectItem value="completed">Completado</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="startDate"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-col">
-                            <FormLabel>Fecha de inicio</FormLabel>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <FormControl>
-                                  <Button
-                                    variant={"outline"}
-                                    className="w-full pl-3 text-left font-normal"
-                                  >
-                                    {field.value ? (
-                                      format(field.value, "P")
-                                    ) : (
-                                      <span>Selecciona una fecha</span>
-                                    )}
-                                    <CalendarLucideIcon className="ml-auto h-4 w-4 opacity-50" />
-                                  </Button>
-                                </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar
-                                  mode="single"
-                                  selected={field.value}
-                                  onSelect={field.onChange}
-                                  disabled={(date) =>
-                                    date > new Date()
-                                  }
-                                  initialFocus
-                                />
-                              </PopoverContent>
-                            </Popover>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="estimatedEndDate"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-col">
-                            <FormLabel>Fecha estimada de fin</FormLabel>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <FormControl>
-                                  <Button
-                                    variant={"outline"}
-                                    className="w-full pl-3 text-left font-normal"
-                                  >
-                                    {field.value ? (
-                                      format(field.value, "P")
-                                    ) : (
-                                      <span>Selecciona una fecha</span>
-                                    )}
-                                    <CalendarLucideIcon className="ml-auto h-4 w-4 opacity-50" />
-                                  </Button>
-                                </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-auto p-0" align="start">
-                                <Calendar
-                                  mode="single"
-                                  selected={field.value}
-                                  onSelect={field.onChange}
-                                  disabled={(date) =>
-                                    date < new Date()
-                                  }
-                                  initialFocus
-                                />
-                              </PopoverContent>
-                            </Popover>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="totalPrice"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Precio total</FormLabel>
-                            <FormControl>
-                              <Input type="number" placeholder="Precio total del proyecto" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="estimatedHours"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Horas estimadas</FormLabel>
-                            <FormControl>
-                              <Input type="number" placeholder="Horas estimadas del proyecto" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name="originType"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Tipo de origen</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Selecciona un tipo de origen" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                <SelectItem value="jump">Jump</SelectItem>
-                                <SelectItem value="custom">Custom</SelectItem>
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      {form.watch("originType") === "jump" && (
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredProjects.map((project) => (
+                        <TableRow key={project.id}>
+                          <TableCell className="font-medium">{project.name}</TableCell>
+                          <TableCell>
+                            {clients.find(client => client.id === project.clientId)?.name || "N/A"}
+                          </TableCell>
+                          <TableCell>
+                            {copilots.find(copilot => copilot.id === project.copilotId)?.name || "N/A"}
+                          </TableCell>
+                          <TableCell>{getStatusBadge(project.status)}</TableCell>
+                          <TableCell>
+                            {new Date(project.startDate).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            {new Date(project.estimatedEndDate).toLocaleDateString()}
+                          </TableCell>
+                          {currentUser?.role === 'admin' && (
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => {
+                                    setEditingProject(project);
+                                    setActiveTab("edit");
+                                  }}
+                                >
+                                  <Edit className="h-4 w-4 mr-1" />
+                                  Editar
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleDeleteProject(project.id)}
+                                >
+                                  <Trash className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="text-center py-12">
+                    <h3 className="text-lg font-semibold">No se encontraron proyectos</h3>
+                    <p className="text-muted-foreground mt-2">
+                      Intenta cambiar los filtros o crea un nuevo proyecto.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {currentUser?.role === 'admin' && (
+            <TabsContent value="create">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Crear Nuevo Proyecto</CardTitle>
+                  <CardDescription>Complete el formulario para crear un nuevo proyecto</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Form {...form}>
+                    <form onSubmit={form.handleSubmit(handleCreateProject)} className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <FormField
                           control={form.control}
-                          name="jumpId"
+                          name="name"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Jump</FormLabel>
+                              <FormLabel>Nombre</FormLabel>
+                              <FormControl>
+                                <Input placeholder="Nombre del proyecto" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="clientId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Cliente</FormLabel>
                               <Select 
                                 onValueChange={field.onChange} 
-                                value={field.value || undefined}
-                                defaultValue={field.value || undefined}
+                                defaultValue={field.value}
                               >
                                 <FormControl>
                                   <SelectTrigger>
-                                    <SelectValue placeholder="Selecciona un Jump" />
+                                    <SelectValue placeholder="Seleccionar cliente" />
                                   </SelectTrigger>
                                 </FormControl>
                                 <SelectContent>
-                                  <SelectItem value={null}>Ninguno</SelectItem>
-                                  {jumps.map((jump) => (
-                                    <SelectItem key={jump.id} value={jump.id}>{jump.name}</SelectItem>
+                                  {clients.map((client) => (
+                                    <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
                                   ))}
                                 </SelectContent>
                               </Select>
@@ -666,56 +521,499 @@ const Projects = () => {
                             </FormItem>
                           )}
                         />
-                      )}
-                    </div>
-                    <DialogFooter>
-                      <Button type="submit">
-                        {editingProject ? "Guardar cambios" : "Crear proyecto"}
-                      </Button>
-                    </DialogFooter>
-                  </form>
-                </Form>
-              </DialogContent>
-            </Dialog>
+
+                        <FormField
+                          control={form.control}
+                          name="copilotId"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Copiloto</FormLabel>
+                              <Select 
+                                onValueChange={field.onChange} 
+                                defaultValue={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Seleccionar copiloto" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  {copilots.map((copilot) => (
+                                    <SelectItem key={copilot.id} value={copilot.id}>{copilot.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="status"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Estado</FormLabel>
+                              <Select 
+                                onValueChange={field.onChange} 
+                                defaultValue={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Seleccionar estado" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="planned">Planificado</SelectItem>
+                                  <SelectItem value="in_progress">En progreso</SelectItem>
+                                  <SelectItem value="completed">Completado</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="startDate"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-col">
+                              <FormLabel>Fecha de Inicio</FormLabel>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <FormControl>
+                                    <Button
+                                      variant={"outline"}
+                                      className={cn(
+                                        "w-[240px] pl-3 text-left font-normal",
+                                        !field.value && "text-muted-foreground"
+                                      )}
+                                    >
+                                      {field.value ? (
+                                        new Date(field.value).toLocaleDateString("es-ES", {
+                                          year: "numeric",
+                                          month: "long",
+                                          day: "numeric",
+                                        })
+                                      ) : (
+                                        <span>Seleccionar fecha</span>
+                                      )}
+                                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                    </Button>
+                                  </FormControl>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                  <DatePicker
+                                    mode="single"
+                                    selected={field.value}
+                                    onSelect={field.onChange}
+                                    disabled={false}
+                                    initialFocus
+                                  />
+                                </PopoverContent>
+                              </Popover>
+                              <FormDescription>
+                                Fecha de inicio del proyecto.
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="estimatedEndDate"
+                          render={({ field }) => (
+                            <FormItem className="flex flex-col">
+                              <FormLabel>Fecha de Fin Estimada</FormLabel>
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <FormControl>
+                                    <Button
+                                      variant={"outline"}
+                                      className={cn(
+                                        "w-[240px] pl-3 text-left font-normal",
+                                        !field.value && "text-muted-foreground"
+                                      )}
+                                    >
+                                      {field.value ? (
+                                        new Date(field.value).toLocaleDateString("es-ES", {
+                                          year: "numeric",
+                                          month: "long",
+                                          day: "numeric",
+                                        })
+                                      ) : (
+                                        <span>Seleccionar fecha</span>
+                                      )}
+                                      <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                    </Button>
+                                  </FormControl>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0" align="start">
+                                  <DatePicker
+                                    mode="single"
+                                    selected={field.value}
+                                    onSelect={field.onChange}
+                                    disabled={false}
+                                    initialFocus
+                                  />
+                                </PopoverContent>
+                              </Popover>
+                              <FormDescription>
+                                Fecha estimada de finalización del proyecto.
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="totalPrice"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Precio Total</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  type="number" 
+                                  placeholder="0.00" 
+                                  {...field} 
+                                  onChange={e => field.onChange(Number(e.target.value))}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="estimatedHours"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Horas Estimadas</FormLabel>
+                              <FormControl>
+                                <Input 
+                                  type="number" 
+                                  placeholder="0" 
+                                  {...field} 
+                                  onChange={e => field.onChange(Number(e.target.value))}
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={form.control}
+                          name="originType"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Tipo de Origen</FormLabel>
+                              <Select 
+                                onValueChange={field.onChange} 
+                                defaultValue={field.value}
+                              >
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Seleccionar origen" />
+                                  </SelectTrigger>
+                                </FormControl>
+                                <SelectContent>
+                                  <SelectItem value="jump">Jump</SelectItem>
+                                  <SelectItem value="custom">Custom</SelectItem>
+                                </SelectContent>
+                              </Select>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        {form.getValues("originType") === "jump" && (
+                          <FormField
+                            control={form.control}
+                            name="jumpId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Jump</FormLabel>
+                                <Select 
+                                  onValueChange={field.onChange} 
+                                  defaultValue={field.value}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccionar Jump" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {jumps.map((jump) => (
+                                      <SelectItem key={jump.id} value={jump.id}>{jump.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        )}
+
+                        <FormField
+                          control={form.control}
+                          name="description"
+                          render={({ field }) => (
+                            <FormItem className="md:col-span-2">
+                              <FormLabel>Descripción</FormLabel>
+                              <FormControl>
+                                <Textarea placeholder="Descripción detallada del proyecto" {...field} />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-3 pt-4">
+                        <Button 
+                          type="button" 
+                          variant="outline" 
+                          onClick={() => setActiveTab("list")}
+                        >
+                          Cancelar
+                        </Button>
+                        <Button type="submit">
+                          Crear Proyecto
+                        </Button>
+                      </div>
+                    </form>
+                  </Form>
+                </CardContent>
+              </Card>
+            </TabsContent>
           )}
-        </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Listado de proyectos</CardTitle>
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Buscar por nombre, cliente o copiloto..."
-                className="pl-10"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </CardHeader>
-          <CardContent>
-            {projects.length > 0 ? (
-              <DataTable 
-                columns={columns} 
-                data={projects} 
-                searchKey="name"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center py-10 text-center">
-                <Package className="h-12 w-12 text-muted-foreground mb-2" />
-                <h3 className="text-lg font-medium">No se encontraron proyectos</h3>
-                <p className="text-sm text-muted-foreground mt-1">
-                  {searchQuery 
-                    ? "No hay resultados para tu búsqueda" 
-                    : "Aún no hay proyectos registrados"}
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </AppLayout>
-  );
-};
+          {currentUser?.role === 'admin' && (
+            <TabsContent value="edit">
+              {editingProject && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Editar Proyecto</CardTitle>
+                    <CardDescription>Modifica los detalles del proyecto</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Form {...form}>
+                      <form onSubmit={form.handleSubmit(handleUpdateProject)} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <FormField
+                            control={form.control}
+                            name="name"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Nombre</FormLabel>
+                                <FormControl>
+                                  <Input placeholder="Nombre del proyecto" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
 
-export default Projects;
+                          <FormField
+                            control={form.control}
+                            name="clientId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Cliente</FormLabel>
+                                <Select 
+                                  onValueChange={field.onChange} 
+                                  defaultValue={field.value}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccionar cliente" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {clients.map((client) => (
+                                      <SelectItem key={client.id} value={client.id}>{client.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="copilotId"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Copiloto</FormLabel>
+                                <Select 
+                                  onValueChange={field.onChange} 
+                                  defaultValue={field.value}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccionar copiloto" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    {copilots.map((copilot) => (
+                                      <SelectItem key={copilot.id} value={copilot.id}>{copilot.name}</SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="status"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Estado</FormLabel>
+                                <Select 
+                                  onValueChange={field.onChange} 
+                                  defaultValue={field.value}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccionar estado" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="planned">Planificado</SelectItem>
+                                    <SelectItem value="in_progress">En progreso</SelectItem>
+                                    <SelectItem value="completed">Completado</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="startDate"
+                            render={({ field }) => (
+                              <FormItem className="flex flex-col">
+                                <FormLabel>Fecha de Inicio</FormLabel>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <FormControl>
+                                      <Button
+                                        variant={"outline"}
+                                        className={cn(
+                                          "w-[240px] pl-3 text-left font-normal",
+                                          !field.value && "text-muted-foreground"
+                                        )}
+                                      >
+                                        {field.value ? (
+                                          new Date(field.value).toLocaleDateString("es-ES", {
+                                            year: "numeric",
+                                            month: "long",
+                                            day: "numeric",
+                                          })
+                                        ) : (
+                                          <span>Seleccionar fecha</span>
+                                        )}
+                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                      </Button>
+                                    </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="start">
+                                    <DatePicker
+                                      mode="single"
+                                      selected={field.value}
+                                      onSelect={field.onChange}
+                                      disabled={false}
+                                      initialFocus
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                                <FormDescription>
+                                  Fecha de inicio del proyecto.
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="estimatedEndDate"
+                            render={({ field }) => (
+                              <FormItem className="flex flex-col">
+                                <FormLabel>Fecha de Fin Estimada</FormLabel>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <FormControl>
+                                      <Button
+                                        variant={"outline"}
+                                        className={cn(
+                                          "w-[240px] pl-3 text-left font-normal",
+                                          !field.value && "text-muted-foreground"
+                                        )}
+                                      >
+                                        {field.value ? (
+                                          new Date(field.value).toLocaleDateString("es-ES", {
+                                            year: "numeric",
+                                            month: "long",
+                                            day: "numeric",
+                                          })
+                                        ) : (
+                                          <span>Seleccionar fecha</span>
+                                        )}
+                                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                      </Button>
+                                    </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-auto p-0" align="start">
+                                    <DatePicker
+                                      mode="single"
+                                      selected={field.value}
+                                      onSelect={field.onChange}
+                                      disabled={false}
+                                      initialFocus
+                                    />
+                                  </PopoverContent>
+                                </Popover>
+                                <FormDescription>
+                                  Fecha estimada de finalización del proyecto.
+                                </FormDescription>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="totalPrice"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Precio Total</FormLabel>
+                                <FormControl>
+                                  <Input 
+                                    type="number" 
+                                    placeholder="0.00" 
+                                    {...field} 
+                                    onChange={e => field.onChange(Number(e.target.value))}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="estimatedHours"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Horas Estimadas</FormLabel>
+                                <FormControl
