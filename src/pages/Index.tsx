@@ -12,7 +12,8 @@ const Index = () => {
       if (isAuthenticated) {
         navigate("/dashboard");
       } else {
-        navigate("/login");
+        // Instead of navigating to login, let's use the visitor home page as our main entry point
+        navigate("/");
       }
     }
   }, [isAuthenticated, loading, navigate]);

@@ -25,6 +25,12 @@ import Statistics from "./pages/Statistics";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
 
+// Visitor Pages
+import Home from "./pages/visitor/Home";
+import VisitorJumps from "./pages/visitor/Jumps";
+import VisitorCopilots from "./pages/visitor/Copilots";
+import CustomProposal from "./pages/visitor/CustomProposal";
+
 const queryClient = new QueryClient();
 
 function App() {
@@ -41,9 +47,17 @@ function App() {
           <Sonner />
           <BrowserRouter>
             <Routes>
-              <Route path="/" element={<Index />} />
+              {/* Visitor Pages */}
+              <Route path="/" element={<Home />} />
+              <Route path="/visitor/jumps" element={<VisitorJumps />} />
+              <Route path="/visitor/copilots" element={<VisitorCopilots />} />
+              <Route path="/visitor/custom-proposal" element={<CustomProposal />} />
+              
+              {/* Auth Pages */}
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
+              
+              {/* App Pages */}
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/projects" element={<Projects />} />
               <Route path="/jumps-catalog" element={<JumpsCatalog />} />
@@ -55,7 +69,8 @@ function App() {
               <Route path="/statistics" element={<Statistics />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/profile" element={<Profile />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              
+              {/* 404 Page */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>
