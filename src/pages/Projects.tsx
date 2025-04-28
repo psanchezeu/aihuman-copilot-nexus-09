@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -22,7 +21,7 @@ import {
 } from "@/lib/dataService";
 import { Project, User, Jump } from "@/lib/models";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, Search, Package, Calendar, CalendarClock } from "lucide-react";
+import { PlusCircle, Search, Package, CalendarIcon as CalendarLucideIcon, CalendarClock } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import ActionButtons from "@/components/shared/ActionButtons";
 
@@ -53,7 +52,6 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -404,7 +402,7 @@ const Projects = () => {
       header: "Fecha inicio",
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <CalendarLucideIcon className="h-4 w-4 text-muted-foreground" />
           <span>{new Date(row.getValue("startDate")).toLocaleDateString()}</span>
         </div>
       ),
