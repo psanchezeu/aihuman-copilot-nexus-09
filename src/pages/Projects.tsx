@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import AppLayout from "@/components/layout/AppLayout";
 import { useAuth } from "@/contexts/AuthContext";
@@ -9,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Calendar } from "@/components/ui/calendar"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Table,
   TableBody,
@@ -18,8 +19,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { CalendarIcon, CheckCircle, Circle, Copy, CopyCheck, PlusCircle, Search, User, User2, Wrench } from "lucide-react";
+} from "@/components/ui/table";
+import { CalendarIcon, CheckCircle, Circle, Copy, CopyCheck, Edit, PlusCircle, Search, Trash, User, User2, Wrench } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { Project, User as UserModel, Jump } from "@/lib/models";
 import { getProjects, createProject, updateProject, deleteProject, getUsersByRole, getJumps } from "@/lib/storageService";
@@ -29,6 +30,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 // Form validation schema
 const formSchema = z.object({
@@ -1016,4 +1019,113 @@ const Projects = () => {
                             render={({ field }) => (
                               <FormItem>
                                 <FormLabel>Horas Estimadas</FormLabel>
-                                <FormControl
+                                <FormControl>
+                                  <Input 
+                                    type="number" 
+                                    placeholder="0" 
+                                    {...field} 
+                                    onChange={e => field.onChange(Number(e.target.value))}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name="originType"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Tipo de Origen</FormLabel>
+                                <Select 
+                                  onValueChange={field.onChange} 
+                                  defaultValue={field.value}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Seleccionar origen" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="jump">Jump</SelectItem>
+                                    <SelectItem value="custom">Custom</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {form.getValues("originType") === "jump" && (
+                            <FormField
+                              control={form.control}
+                              name="jumpId"
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Jump</FormLabel>
+                                  <Select 
+                                    onValueChange={field.onChange} 
+                                    defaultValue={field.value}
+                                  >
+                                    <FormControl>
+                                      <SelectTrigger>
+                                        <SelectValue placeholder="Seleccionar Jump" />
+                                      </SelectTrigger>
+                                    </FormControl>
+                                    <SelectContent>
+                                      {jumps.map((jump) => (
+                                        <SelectItem key={jump.id} value={jump.id}>{jump.name}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          )}
+
+                          <FormField
+                            control={form.control}
+                            name="description"
+                            render={({ field }) => (
+                              <FormItem className="md:col-span-2">
+                                <FormLabel>Descripción</FormLabel>
+                                <FormControl>
+                                  <Textarea placeholder="Descripción detallada del proyecto" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        <div className="flex justify-end gap-3 pt-4">
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => {
+                              setEditingProject(null);
+                              setActiveTab("list");
+                            }}
+                          >
+                            Cancelar
+                          </Button>
+                          <Button type="submit">
+                            Guardar Cambios
+                          </Button>
+                        </div>
+                      </form>
+                    </Form>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          )}
+        </Tabs>
+      </div>
+    </AppLayout>
+  );
+};
+
+export default Projects;
